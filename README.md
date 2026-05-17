@@ -1,164 +1,197 @@
-# Expense Tracker CLI
+# Expense Tracker API
 
-Track your finances directly from the terminal — add, delete, update, list, and summarize expenses with monthly budgets and CSV export.
+A FastAPI + JWT-backed REST API for tracking personal expenses.
+Each authenticated user owns their own expense records; JWT tokens protect every write endpoint.
 
-![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
+**Tech Stack:** Python · FastAPI · aiosqlite · PyJWT · Pydantic
 
----
-
-## 📋 Project
-
-Part of the [Expense Tracker](https://roadmap.sh/projects/expense-tracker) project challenge on **roadmap.sh**.
+**Project URL:** https://github.com/trippusultan/expense-tracker
 
 ---
 
-## ✨ Features
-
-| Feature | Status |
-|---|---|
-| Add expense (description + amount + category) | ✅ |
-| Delete expense by ID | ✅ |
-| Update expense by ID | ✅ |
-| List all expenses (table view) | ✅ |
-| Filter list by category | ✅ |
-| Total summary | ✅ |
-| Monthly summary with per-category breakdown | ✅ |
-| Monthly budget (set + warning at 90% / exceeded) | ✅ |
-| Export to CSV | ✅ |
-| Zero external dependencies | ✅ |
-
----
-
-## 🚀 Installation
-
-Just Python 3.8+. No `pip install` needed.
+## How to run
 
 ```bash
-git clone https://github.com/trippusultan/expense-tracker.git
-cd expense-tracker
+# install dependencies
+pip install -r requirements.txt
+
+# dev server (auto-reload)
+python run.py
+
+# production
+uvicorn main:app --host 0.0.0.0 --port 8001
+```
+
+The SQLite database is created automatically at `data/expense.db` on first launch.
+
+---
+
+## Authentication
+
+JWT tokens are issued at `POST /auth/register` and `POST /auth/login`.
+Pass the token as an `Authorization: Bearer <token>` header on every
+expense endpoint.
+
+### Register
+
+```http
+POST /auth/register
+Content-Type: application/json
+
+{ "username": "alice", "email": "alice@example.com", "password": "secret123" }
+```
+
+### Login
+
+```http
+POST /auth/login
+Content-Type: application/json
+
+{ "username": "alice", "password": "secret123" }
+```
+
+Response:
+
+```json
+{ "access_token": "<JWT>", "token_type": "bearer" }
 ```
 
 ---
 
-## 🛠 Usage
+## Expense endpoints
+
+All paths below require `Authorization: Bearer <token>`.
+
+### List expenses
+
+```http
+GET /expenses
+GET /expenses?period=week
+GET /expenses?period=month
+GET /expenses?period=3months
+GET /expenses?start_date=2026-01-01&end_date=2026-05-17
+GET /expenses?category=Groceries&period=month
+```
+
+| Query param | Description |
+|---|---|
+| `period` | Shortcut: `week` (last 7 d), `month` (last 30 d), `3months` (last 90 d) |
+| `start_date` | Inclusive lower bound `YYYY-MM-DD` |
+| `end_date` | Inclusive upper bound `YYYY-MM-DD` |
+| `category` | One of the 7 categories (see below) |
+| `skip` | Offset for pagination |
+| `limit` | Page size (1–500) |
+
+```json
+{
+  "total": 5,
+  "expenses": [
+    {
+      "id": 1,
+      "amount": 12.50,
+      "category": "Groceries",
+      "description": "Apples and bread",
+      "date": "2026-05-15",
+      "user_id": 1,
+      "created_at": "2026-05-15T10:30:00",
+      "updated_at": "2026-05-15T10:30:00"
+    }
+  ]
+}
+```
+
+### Create expense
+
+```http
+POST /expenses
+Content-Type: application/json
+
+{
+  "amount": 12.50,
+  "category": "Groceries",
+  "description": "Apples and bread",
+  "date": "2026-05-17"
+}
+```
+
+Returns the created record with `201` status.
+
+### Update expense
+
+```http
+PUT /expenses/1
+Content-Type: application/json
+
+{ "amount": 15.00, "category": "Groceries", "description": "Apples, bread & milk", "date": "2026-05-17" }
+```
+
+### Delete expense
+
+```http
+DELETE /expenses/1
+```
+
+---
+
+## Expense categories
+
+`Groceries` · `Leisure` · `Electronics` · `Utilities` · `Clothing` · `Health` · `Others`
+
+---
+
+## Verify with curl
 
 ```bash
-python3 expense-tracker.py <command> [options]
-```
+# 1 — register
+curl -s -X POST http://localhost:8001/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username":"test","email":"t@e.com","password":"secret123"}'
 
-| Command | Flags |
-|---|---|
-| `add` | `--description`, `--amount`, `--category` |
-| `delete` | `--id` |
-| `update` | `--id`, `--description`, `--amount`, `--category` |
-| `list` | `--category` |
-| `summary` | `--month` (1–12), `--year` |
-| `export` | `--output <file.csv>`, `--category` |
-| `budget` | `--month`, `--year`, `--set-budget <amount>` |
+# 2 — login (save the token)
+TOKEN=$(curl -s -X POST http://localhost:8001/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"test","password":"secret123"}' | python3 -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
 
----
+# 3 — create expense
+curl -s -X POST http://localhost:8001/expenses \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"amount":99.99,"category":"Electronics","description":"Headphones"}'
 
-## 📖 Examples
+# 4 — list (week)
+curl -s "http://localhost:8001/expenses?period=week" -H "Authorization: Bearer $TOKEN"
 
-```bash
-# Add expenses
-python3 expense-tracker.py add --description "Lunch" --amount 20
-python3 expense-tracker.py add --description "Dinner" --amount 10 --category food
-python3 expense-tracker.py add --description "Uber" --amount 15 --category transport
+# 5 — update
+curl -s -X PUT http://localhost:8001/expenses/1 \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"amount":79.99,"category":"Electronics","description":"Headphones (discounted)","date":"2026-05-17"}'
 
-# List all
-python3 expense-tracker.py list
+# 6 — total list
+curl -s "http://localhost:8001/expenses" -H "Authorization: Bearer $TOKEN"
 
-# List filtered by category
-python3 expense-tracker.py list --category food
+# 7 — delete
+curl -s -X DELETE http://localhost:8001/expenses/1 -H "Authorization: Bearer $TOKEN"
 
-# Total summary
-python3 expense-tracker.py summary
-
-# Monthly summary
-python3 expense-tracker.py summary --month 5
-
-# Delete
-python3 expense-tracker.py delete --id 2
-
-# Update
-python3 expense-tracker.py update --id 1 --amount 25 --description "Lunch"
-
-# Export to CSV
-python3 expense-tracker.py export
-python3 expense-tracker.py export --output my-expenses.csv --category food
-
-# Set a monthly budget
-python3 expense-tracker.py budget --month 5 --set-budget 100
-# Shows warnings when you exceed 90% or overspend in monthly summary
+# 8 — health
+curl -s http://localhost:8001/health
 ```
 
 ---
 
-## 📊 Output
+## Environment variables
 
-### `list`
+| Variable | Default | Purpose |
+|---|---|---|
+| `SECRET_KEY` | `dev-secret-change-in-production` | JWT signing secret |
+| `DATABASE_URL` | `sqlite+aiosqlite:///data/expense.db` | aiosqlite connection URL |
+| `HOST` | `0.0.0.0` | uvicorn bind address |
+| `PORT` | `8001` | uvicorn listen port |
 
-```
-  ID  Date          Category      Description                     Amount
-----------------------------------------------------------------------------
-   1  2026-05-15    general       Lunch                           $20.00
-   2  2026-05-15    food          Coffee                          $5.50
-```
-
-### `summary`
-
-```
-Total expenses: $100.00
-  general         $20.00
-  housing         $80.00
-
-Budget: $100.00  |  Spent: $100.00  |  Remaining: $0.00  (100.0%)
-⚠️  Budget exceeded!
-```
-
-### `summary --month 5`
-
-```
-Total expenses for May 2026: $100.00
-  general         $20.00
-  housing         $80.00
-
-Budget: $100.00  |  Spent: $100.00  |  Remaining: $0.00  (100.0%)
-⚠️  Budget exceeded!
-```
+Generate a strong `SECRET_KEY` before deploying to production.
 
 ---
 
-## 📁 Data Storage
-
-- **Expenses:** `expenses.json` (same directory as the script)
-- **Budgets:** `budgets.json` (same directory as the script)
-
-Both track data by default within the script folder — just commit or back up the whole project directory.
-
----
-
-## ⚠️ Error Handling
-
-| Scenario | Response |
-|---|---|
-| Invalid / missing description | `Error: description is required.` |
-| Negative / zero amount | `Error: amount must be a positive number.` |
-| Non-existent expense ID | `Error: expense with ID X does not exist.` |
-| Invalid month number | argparse built-in error |
-| No expenses found | `No expenses found.` |
-
----
-
-## 🔗 Links
-
-- [roadmap.sh Project](https://roadmap.sh/projects/expense-tracker)
-- [GitHub Repo](https://github.com/trippusultan/expense-tracker)
-
----
-
-## 📄 License
+## License
 
 MIT
