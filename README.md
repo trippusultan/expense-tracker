@@ -1,11 +1,11 @@
 # Expense Tracker API
 
+**[Project URL](https://github.com/trippusultan/expense-tracker)**
+
+https://github.com/trippusultan/expense-tracker
+
 A FastAPI + JWT-backed REST API for tracking personal expenses.
 Each authenticated user owns their own expense records; JWT tokens protect every write endpoint.
-
-**Tech Stack:** Python · FastAPI · aiosqlite · PyJWT · Pydantic
-
-**Project URL:** https://github.com/trippusultan/expense-tracker
 
 ---
 
@@ -29,8 +29,7 @@ The SQLite database is created automatically at `data/expense.db` on first launc
 ## Authentication
 
 JWT tokens are issued at `POST /auth/register` and `POST /auth/login`.
-Pass the token as an `Authorization: Bearer <token>` header on every
-expense endpoint.
+Pass the token as an `Authorization: Bearer <token>` header on every expense endpoint.
 
 ### Register
 
@@ -147,7 +146,7 @@ curl -s -X POST http://localhost:8001/auth/register \
   -H "Content-Type: application/json" \
   -d '{"username":"test","email":"t@e.com","password":"secret123"}'
 
-# 2 — login (save the token)
+# 2 — login (extract the token)
 TOKEN=$(curl -s -X POST http://localhost:8001/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"test","password":"secret123"}' | python3 -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
@@ -167,7 +166,7 @@ curl -s -X PUT http://localhost:8001/expenses/1 \
   -H "Content-Type: application/json" \
   -d '{"amount":79.99,"category":"Electronics","description":"Headphones (discounted)","date":"2026-05-17"}'
 
-# 6 — total list
+# 6 — list all
 curl -s "http://localhost:8001/expenses" -H "Authorization: Bearer $TOKEN"
 
 # 7 — delete
